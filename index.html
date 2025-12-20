@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CTF Challenge</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;background:#0b5133;color:#fff;font-family:Arial}
+.wrap{max-width:1200px;margin:16px auto;padding:16px}
+button{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-weight:bold}
+.hand{display:flex;gap:10px;flex-wrap:wrap;min-height:160px;border:2px dashed rgba(255,255,255,.3);padding:10px}
+.melds{display:flex;gap:12px}
+.meld{width:360px;height:160px;border:2px dashed rgba(255,255,255,.4);display:flex;flex-wrap:wrap;gap:6px;padding:6px}
+.card{width:70px;height:102px;cursor:grab}
+
+#mazeGame{display:none}
+#mazeWrap{display:flex;gap:20px;align-items:flex-start}
+#maze{display:grid;grid-template-columns:repeat(16,1fr);max-width:640px;user-select:none}
+.cell{width:40px;height:40px;border:1px solid #1f7a55;display:flex;align-items:center;justify-content:center;font-weight:bold}
+.cell.sel{background:#f1c40f;color:#000}
+.cell.found{background:#27ae60;color:#000}
+
+#words{min-width:200px}
+#words h3{margin-top:0}
+.word{padding:4px 0}
+.word.done{text-decoration:line-through;color:#2ecc71}
+
+#timer{font-weight:bold;margin-bottom:10px}
+</style>
+</head>
+
+<body>
+
+<div id="cardGame" class="wrap">
+<h2>🃏 Card Game</h2>
+<button id="declareBtn">Declare</button>
+<button id="resetBtn">Reset</button>
+
+<h3>Your Hand</h3>
+<div id="hand" class="hand"></div>
+
+<h3>Meld Zones</h3>
+<div class="melds">
+  <div class="meld"></div>
+  <div class="meld"></div>
+  <div class="meld"></div>
+</div>
+</div>
+
+<div id="mazeGame" class="wrap">
+<h2>🔤 Word Maze</h2>
+<div id="timer">Time Left: 03:00</div>
+
+<div id="mazeWrap">
+  <div id="maze"></div>
+  <div id="words">
+    <h3>Words to Find</h3>
+    <div id="wordList"></div>
+  </div>
+</div>
+</div>
+
+<script>
+
+const __x1="RkxBR3tOT1RfUkVBTF9GTEFHfQ==";
+(function(){try{atob(__x1)}catch(e){}})();
+
+/* ===== CARD GAME ===== */
+const hand=document.getElementById("hand");
+const melds=document.querySelectorAll(".meld");
+const declareBtn=document.getElementById("declareBtn");
+const resetBtn=document.getElementById("resetBtn");
+const cardGame=document.getElementById("cardGame");
+const mazeGame=document.getElementById("mazeGame");
+
+let declareCount=0;
+const suits=["S","H","D","C"];
+const ranks=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+
+function cardURL(r,s){
+  return `https://deckofcardsapi.com/static/img/${r==="10"?"0":r}${s}.png`;
+}
+
+function deal(){
+  hand.innerHTML="";
+  melds.forEach(m=>m.innerHTML="");
+  declareCount=0;
+  for(let i=0;i<13;i++){
+    const c=document.createElement("img");
+    c.src=cardURL(
+      ranks[Math.floor(Math.random()*13)],
+      suits[Math.floor(Math.random()*4)]
+    );
+    c.className="card";
+    c.draggable=true;
+    c.addEventListener("dragstart",()=>c.classList.add("dragging"));
+    c.addEventListener("dragend",()=>c.classList.remove("dragging"));
+    hand.appendChild(c);
+  }
+}
+
+[hand,...melds].forEach(zone=>{
+  zone.addEventListener("dragover",e=>e.preventDefault());
+  zone.addEventListener("drop",()=>{
+    const d=document.querySelector(".dragging");
+    if(d)zone.appendChild(d);
+  });
+});
+
+declareBtn.onclick=()=>{
+  if(hand.children.length>0){
+    alert("Move all cards first");
+    return;
+  }
+  declareCount++;
+  if(declareCount===1) alert("Try next");
+  else if(declareCount===2) alert("You are too close");
+  else{
+    cardGame.style.display="none";
+    mazeGame.style.display="block";
+    initMaze();
+    startTimer(180);
+  }
+};
+
+resetBtn.onclick=deal;
+
+/* ===== WORD MAZE ===== */
+const WORDS=["RUMMY","SEQUENCE","CLUB","DIAMOND","SPADE","DECK","JOKER"];
+const SIZE=16;
+
+let grid=[],found=[],drag=false,sel=[],timerId=null;
+
+function initMaze(){
+  found=[];
+  grid=Array.from({length:SIZE},()=>Array(SIZE).fill(""));
+  placeWords();
+  fillRandom();
+  drawMaze();
+  drawWordList();
+}
+
+function drawWordList(){
+  const list=document.getElementById("wordList");
+  list.innerHTML="";
+  WORDS.forEach(w=>{
+    const d=document.createElement("div");
+    d.textContent=w;
+    d.className="word";
+    d.id="w_"+w;
+    list.appendChild(d);
+  });
+}
+
+function placeWords(){
+  WORDS.forEach(word=>{
+    let placed=false;
+    while(!placed){
+      let x=Math.floor(Math.random()*SIZE);
+      let y=Math.floor(Math.random()*SIZE);
+      let dir=Math.random()<0.5?[1,0]:[0,1];
+      if(x+dir[0]*word.length>SIZE || y+dir[1]*word.length>SIZE) continue;
+      placed=true;
+      for(let i=0;i<word.length;i++)
+        if(grid[x+i*dir[0]][y+i*dir[1]]) placed=false;
+      if(placed)
+        for(let i=0;i<word.length;i++)
+          grid[x+i*dir[0]][y+i*dir[1]]=word[i];
+    }
+  });
+}
+
+function fillRandom(){
+  const A="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  for(let i=0;i<SIZE;i++)
+    for(let j=0;j<SIZE;j++)
+      if(!grid[i][j])
+        grid[i][j]=A[Math.floor(Math.random()*26)];
+}
+
+function drawMaze(){
+  const maze=document.getElementById("maze");
+  maze.innerHTML="";
+  for(let i=0;i<SIZE;i++){
+    for(let j=0;j<SIZE;j++){
+      const c=document.createElement("div");
+      c.className="cell";
+      c.textContent=grid[i][j];
+      c.dataset.x=i;
+      c.dataset.y=j;
+      maze.appendChild(c);
+    }
+  }
+
+  maze.onmousedown=e=>{
+    if(!e.target.classList.contains("cell")) return;
+    drag=true;
+    sel=[e.target];
+    e.target.classList.add("sel");
+  };
+
+  maze.onmouseover=e=>{
+    if(!drag || !e.target.classList.contains("cell")) return;
+    const last=sel[sel.length-1];
+    const lx=+last.dataset.x, ly=+last.dataset.y;
+    const nx=+e.target.dataset.x, ny=+e.target.dataset.y;
+    if((lx===nx && Math.abs(ly-ny)===1) ||
+       (ly===ny && Math.abs(lx-nx)===1)){
+      if(!sel.includes(e.target)){
+        sel.push(e.target);
+        e.target.classList.add("sel");
+      }
+    }
+  };
+  const _mid=["NPR{ABG_GUR_SYNT}","FLAG{ABG_N_CNGU}"];
+_mid.map(s=>s.replace(/[A-Z]/g,c=>String.fromCharCode((c.charCodeAt(0)-65+13)%26+65)));
+
+const _xor=[0x31,0x22,0x37,0x11];
+(function(){let o="",k=0x21;for(let i of _xor)o+=String.fromCharCode(i^k);return o})();
+
+  document.onmouseup=()=>{
+    if(!drag) return;
+    const word=sel.map(c=>c.textContent).join("");
+    if(WORDS.includes(word) && !found.includes(word)){
+      found.push(word);
+      sel.forEach(c=>c.classList.add("found"));
+      document.getElementById("w_"+word).classList.add("done");
+
+      if(found.length===WORDS.length){
+        clearInterval(timerId);
+        alert("NGUgNTAgNTIgN2IgNGYgNTIgNDcgNDcgNTIgNDUgNWYgNTkgNDggNTAgNTggNWYgNDEgNTIgNGIgNDcgNWYgNDcgNTYgNWEgNTIgN2Q=");
+      }
+    }else{
+      sel.forEach(c=>c.classList.remove("sel"));
+    }
+    drag=false;
+    sel=[];
+  };
+}
+
+function startTimer(seconds){
+  clearInterval(timerId);
+  const t=document.getElementById("timer");
+  timerId=setInterval(()=>{
+    const m=String(Math.floor(seconds/60)).padStart(2,"0");
+    const s=String(seconds%60).padStart(2,"0");
+    t.textContent=`Time Left: ${m}:${s}`;
+    if(--seconds<0){
+      clearInterval(timerId);
+      alert("Time Up");
+    }
+  },1000);
+}
+const __L1="RkxBR3tUSElTX0lTX0RFQ09ZfQ==";
+const __L2="464c41477bRklOQUxfRkFLRX0=";
+const __L3=[0x12,0x24,0x33,0x10,0x01];
+(function(){
+  try{atob(__L1)}catch(e){}
+  let h="";
+  for(let i=0;i<__L2.length;i+=2)
+    h+=String.fromCharCode(parseInt(__L2.substr(i,2),16));
+  let x="",k=0x23;
+  for(let i of __L3) x+=String.fromCharCode(i^k);
+  return h+x;
+})();
+
+
+
+const __end=["464c41477b46414b457d","RkxBR3tOT1RfUkVBTH0="];
+__end.forEach(v=>{try{atob(v)}catch(e){}});
+
+deal();
+</script>
+</body>
+</html>
